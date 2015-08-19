@@ -1,0 +1,14 @@
+{
+	"ImportPath": "slowteetoe.com/presagio",
+	"GoVersion": "go1.4.2",
+	"Packages": [
+		"./..."
+	],
+	"Deps": [
+		{
+			"ImportPath": "gopkg.in/cq.v1",
+			"Comment": "v0.1.0-68-gc5c4a56",
+			"Rev": "c5c4a56ead4e0146cec28a7638cd44b506922b92"
+		}
+	]
+}
