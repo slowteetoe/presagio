@@ -129,7 +129,7 @@ var db *sql.DB
 var stmt *sql.Stmt
 
 func main() {
-	db, err := sql.Open("neo4j-cypher", "http://neo4j:n304j@localhost:7474")
+	db, err := sql.Open("neo4j-cypher", os.Getenv("GRAPHSTORY_URL"))
 	if err != nil {
 		log.Fatal(err)
 	}
