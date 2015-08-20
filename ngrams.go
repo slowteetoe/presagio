@@ -1,12 +1,11 @@
 package main
 
 import (
-	"database/sql"
+	"encoding/gob"
 	"encoding/json"
 	"log"
 	"net/http"
 	"os"
-	_ "slowteetoe.com/presagio/Godeps/_workspace/src/gopkg.in/cq.v1"
 	"strings"
 	"time"
 )
@@ -45,9 +44,14 @@ func suggestionsHandler(w http.ResponseWriter, r *http.Request) (int, error) {
 
 	q := r.FormValue("q")
 
-	suggestions := FindSuggestions(q)
+	s := FindSuggestions(q)
 
-	response := Suggestion{Q: q, Suggestions: suggestions}
+	// I don't like the way the results are coming out, reversing them seems better
+	for i, j := 0, len(s)-1; i < j; i, j = i+1, j-1 {
+		s[i], s[j] = s[j], s[i]
+	}
+
+	response := Suggestion{Q: q, Suggestions: s}
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
@@ -61,6 +65,7 @@ func cleanse(phrase string) string {
 }
 
 func FindSuggestions(phrase string) []string {
+	nResults := 3
 	q := cleanse(phrase)
 
 	// have to keep track of dups (e.g. 4-gram model could suggest "to" as only suggestion, and 3-gram could suggest "to" also)
@@ -71,26 +76,26 @@ func FindSuggestions(phrase string) []string {
 	for n := 4; n > 0; n-- {
 		theseResults := findSuggestions(q, n)
 		for _, t := range theseResults {
-			if keys[t] == "" {
+			if keys[t] == "" && t != "'" {
 				results = append(results, t)
 				keys[t] = t
 			}
 		}
-		if len(results) >= 5 {
-			return results[:5]
+		if len(results) >= nResults {
+			return results[:nResults]
 		}
 	}
-	if len(results) >= 5 {
-		return results[:5]
+	if len(results) >= nResults {
+		return results[:nResults]
 	}
 	return results
 }
 
 func findSuggestions(phrase string, ngramSize int) []string {
-	log.Printf("Attempting to find suggestions from %v using a %v-gram\n", phrase, ngramSize)
+	log.Printf("Attempting to find suggestions for %v, using a %v-gram\n", phrase, ngramSize)
 	if ngramSize == 1 {
 		log.Println("Returning default unigrams")
-		return []string{"the", "to", "a", "i", "you"}
+		return []string{"the", "to", "a"}
 	}
 
 	words := strings.Split(phrase, " ")
@@ -101,47 +106,36 @@ func findSuggestions(phrase string, ngramSize int) []string {
 		// only use the last n-1 words to predict since we only have 4-grams
 		q = strings.Join(words[len(words)-(ngramSize-1):], " ")
 	}
-
-	log.Printf("Querying for: %v", q)
-
-	rows, err := stmt.Query(q)
-	if err != nil {
-		log.Fatal(err)
+	v, ok := m[q]
+	if !ok {
+		return []string{}
 	}
-	defer rows.Close()
 
-	results := make([]string, 0)
-
-	var nextWord string
-	var prob string
-	for rows.Next() {
-		err := rows.Scan(&nextWord, &prob)
-		if err != nil {
-			log.Fatal(err)
-		}
-		results = append(results, nextWord)
-		log.Printf("%v -> %v (with probability %v)", q, nextWord, prob)
-	}
-	return results
+	return v.Words
 }
 
-var db *sql.DB
-var stmt *sql.Stmt
+type Suggestions struct {
+	Words []string
+}
+
+var m map[string]Suggestions
 
 func main() {
-	db, err := sql.Open("neo4j-cypher", os.Getenv("GRAPHSTORY_URL"))
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer db.Close()
 
-	stmt, err = db.Prepare(`
-        match (a {phrase: {0} })-[p:PRECEDED]->(n) return n.word,p.p order by p.p desc limit 5
-    `)
+	// open the stored hashmap
+	decodeFile, err := os.Open("ngrams.gob")
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
-	defer stmt.Close()
+	defer decodeFile.Close()
+
+	decoder := gob.NewDecoder(decodeFile)
+
+	m = make(map[string]Suggestions)
+
+	decoder.Decode(&m)
+
+	log.Println("Reloaded ngram map from file")
 
 	port := os.Getenv("PORT")
 	if port == "" {
