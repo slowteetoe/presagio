@@ -45,11 +45,6 @@ func suggestionsHandler(w http.ResponseWriter, r *http.Request) (int, error) {
 
 	s := FindSuggestions(q)
 
-	// I don't like the way the results are coming out, reversing them seems better
-	for i, j := 0, len(s)-1; i < j; i, j = i+1, j-1 {
-		s[i], s[j] = s[j], s[i]
-	}
-
 	response := Suggestion{Q: q, Suggestions: s}
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -93,7 +88,6 @@ func FindSuggestions(phrase string) []string {
 }
 
 func findSuggestions(phrase string, ngramSize int) []string {
-	log.Printf("Attempting to find suggestions for %v, using a %v-gram\n", phrase, ngramSize)
 	if ngramSize == 1 {
 		log.Println("Returning default unigrams")
 		return []string{"the", "to", "a"}
@@ -107,11 +101,16 @@ func findSuggestions(phrase string, ngramSize int) []string {
 		// only use the last n-1 words to predict since we only have 4-grams
 		q = strings.Join(words[len(words)-(ngramSize-1):], " ")
 	}
+
+	log.Printf("Attempting to find suggestions for [%v] using a %v-gram, searching map for [%v]\n", phrase, ngramSize, q)
+
 	v, ok := m[q]
 	if !ok {
+		log.Println("Nothing found.")
 		return []string{}
 	}
 
+	log.Printf("Returning %v", v.Words)
 	return v.Words
 }
 
