@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -23,12 +24,10 @@ func (fn appHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 	}
 	status, err := fn(w, r)
-	// log.Printf("Request %v", r)
+
 	if err != nil {
 		log.Printf("HTTP %d: %v", err)
 		switch status {
-		// We can have cases as granular as we like, if we wanted to
-		// return custom errors for specific status codes.
 		case http.StatusNotFound:
 			http.NotFound(w, r)
 		case http.StatusInternalServerError:
@@ -61,7 +60,9 @@ func suggestionsHandler(w http.ResponseWriter, r *http.Request) (int, error) {
 }
 
 func cleanse(phrase string) string {
-	return "^" + phrase
+	clean := alphaspace.ReplaceAll([]byte(phrase), []byte(""))
+	clean = spaces.ReplaceAll(clean, []byte(" "))
+	return "^" + strings.ToLower(string(clean))
 }
 
 func FindSuggestions(phrase string) []string {
@@ -119,6 +120,9 @@ type Suggestions struct {
 }
 
 var m map[string]Suggestions
+
+var alphaspace = regexp.MustCompile("[^[:alpha:][:space:]']")
+var spaces = regexp.MustCompile("[[:space:]]+")
 
 func main() {
 
